@@ -1,0 +1,5 @@
+{
+  "name": "AeroWeather Translator",
+  "description": "Professional aviation weather tool that translates complex METAR and TAF codes into clear, understandable Russian using Gemini AI. Displays real-time data from global aviation sources.",
+  "requestFramePermissions": []
+}

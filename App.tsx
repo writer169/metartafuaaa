@@ -17,15 +17,12 @@ import {
   AlertTriangle,
   CheckCircle2,
   CalendarDays,
-  Loader2,
-  Lock
+  Loader2
 } from 'lucide-react';
 
 const INITIAL_ICAO = 'UAAA';
 
 const App: React.FC = () => {
-  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
-  
   const [icao, setIcao] = useState(INITIAL_ICAO);
   const [inputVal, setInputVal] = useState(INITIAL_ICAO);
   const [state, setState] = useState<WeatherState>({
@@ -37,26 +34,6 @@ const App: React.FC = () => {
     aiAnalysis: null,
     analyzing: false,
   });
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const clientKey = params.get('key');
-    const serverKey = process.env.ACCESS_KEY;
-
-    console.log('Client key:', clientKey);
-    console.log('Server key:', serverKey);
-    console.log('Keys match:', clientKey === serverKey);
-
-    if (!serverKey) {
-      console.error("ACCESS_KEY not set in environment! Authorization disabled for development.");
-      setIsAuthorized(true);
-      return;
-    }
-
-    if (clientKey && clientKey === serverKey) {
-      setIsAuthorized(true);
-    }
-  }, []);
 
   const loadData = useCallback(async (code: string) => {
     setState(prev => ({ ...prev, loading: true, error: null, aiAnalysis: null, analyzing: false }));
@@ -96,10 +73,8 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (isAuthorized) {
-      loadData(INITIAL_ICAO);
-    }
-  }, [isAuthorized, loadData]);
+    loadData(INITIAL_ICAO);
+  }, [loadData]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -259,25 +234,6 @@ const App: React.FC = () => {
         date: `${parseInt(day)} ${monthName}`
      };
   };
-
-  if (!isAuthorized) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-          <div className="bg-red-500/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Lock className="w-8 h-8 text-red-500" />
-          </div>
-          <h2 className="text-xl font-bold text-white mb-2">Доступ ограничен</h2>
-          <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-            Для доступа к приложению необходим ключ авторизации. Пожалуйста, используйте корректную ссылку.
-          </p>
-          <div className="bg-slate-950 rounded-lg p-3 text-xs font-mono text-slate-600 break-all border border-slate-900">
-            ?key=YOUR_ACCESS_KEY
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const visStatus = getVisibilityStatus(state.metar?.visib);
   const metarTime = state.metar ? formatObsTime(state.metar.obsTime) : { utc: '--', relative: '' };

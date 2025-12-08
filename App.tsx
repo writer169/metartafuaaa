@@ -18,16 +18,14 @@ import {
   CheckCircle2,
   CalendarDays,
   Loader2,
-  Lock // Added Lock icon
+  Lock
 } from 'lucide-react';
 
 const INITIAL_ICAO = 'UAAA';
 
 const App: React.FC = () => {
-  // SECURITY GATE STATE
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   
-  // APP STATE
   const [icao, setIcao] = useState(INITIAL_ICAO);
   const [inputVal, setInputVal] = useState(INITIAL_ICAO);
   const [state, setState] = useState<WeatherState>({
@@ -40,26 +38,27 @@ const App: React.FC = () => {
     analyzing: false,
   });
 
-  // Check authorization on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const clientKey = params.get('key');
-    
-    // Safety check for process.env availability
     const serverKey = process.env.ACCESS_KEY;
 
+    console.log('Client key:', clientKey);
+    console.log('Server key:', serverKey);
+    console.log('Keys match:', clientKey === serverKey);
+
     if (!serverKey) {
-      console.warn("Environment variable ACCESS_KEY is not set! The app will remain locked.");
+      console.error("ACCESS_KEY not set in environment! Authorization disabled for development.");
+      setIsAuthorized(true);
+      return;
     }
 
-    // Only authorize if keys match. 
-    if (clientKey && serverKey && clientKey === serverKey) {
+    if (clientKey && clientKey === serverKey) {
       setIsAuthorized(true);
     }
   }, []);
 
   const loadData = useCallback(async (code: string) => {
-    // Reset state but keep loading true
     setState(prev => ({ ...prev, loading: true, error: null, aiAnalysis: null, analyzing: false }));
     
     try {
@@ -74,17 +73,15 @@ const App: React.FC = () => {
         return;
       }
 
-      // Set fetched data and start AI analysis immediately
       setState(prev => ({ 
         ...prev, 
         metar: metarData, 
         taf: tafData,
         station: stationData,
         loading: false,
-        analyzing: true // Start analyzing immediately
+        analyzing: true
       }));
 
-      // Trigger AI Analysis in background
       try {
         const analysis = await analyzeWeather(metarData, tafData);
         setState(prev => ({ ...prev, aiAnalysis: analysis, analyzing: false }));
@@ -102,8 +99,7 @@ const App: React.FC = () => {
     if (isAuthorized) {
       loadData(INITIAL_ICAO);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthorized]); // Only load data after authorization
+  }, [isAuthorized, loadData]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,8 +109,6 @@ const App: React.FC = () => {
       loadData(code);
     }
   };
-
-  // --- Logic Helpers ---
 
   const knotsToMs = (knots: number | undefined) => {
     if (knots === undefined) return undefined;
@@ -189,18 +183,15 @@ const App: React.FC = () => {
     const strVal = String(isoTime).trim();
     if (!strVal) return { utc: '--', relative: '' };
 
-    // Check if it's a numeric timestamp (Unix timestamp)
     const isNumeric = !isNaN(Number(strVal)) && !strVal.includes(':') && !strVal.includes('-');
     
     if (typeof isoTime === 'number' || isNumeric) {
        let timestamp = Number(strVal);
-       // Heuristic: seconds (10 digits) vs milliseconds (13 digits)
        if (timestamp < 10000000000) {
           timestamp *= 1000;
        }
        date = new Date(timestamp);
     } else {
-       // String handling (ISO-like)
        let safeIsoTime = strVal.replace(' ', 'T');
        if (!safeIsoTime.endsWith('Z') && !safeIsoTime.includes('+') && !safeIsoTime.includes('-')) {
           safeIsoTime += 'Z';
@@ -248,9 +239,7 @@ const App: React.FC = () => {
       .trim();
   };
 
-  // Helper to parse "DD.MM HH:MM" into separated Date and Time for styling
   const parseLocalTimeString = (timeStr: string) => {
-     // Expected format: DD.MM HH:MM (e.g. 09.12 19:30)
      const parts = timeStr.split(' ');
      if (parts.length !== 2) return { time: timeStr, date: '' };
 
@@ -266,12 +255,11 @@ const App: React.FC = () => {
      const monthName = months[monthIndex] || month;
 
      return {
-        time: timePart, // "19:30"
-        date: `${parseInt(day)} ${monthName}` // "9 декабря"
+        time: timePart,
+        date: `${parseInt(day)} ${monthName}`
      };
   };
 
-  // RENDER SECURITY BLOCK IF NOT AUTHORIZED
   if (!isAuthorized) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
@@ -294,7 +282,6 @@ const App: React.FC = () => {
   const visStatus = getVisibilityStatus(state.metar?.visib);
   const metarTime = state.metar ? formatObsTime(state.metar.obsTime) : { utc: '--', relative: '' };
   
-  // Logic for Time Display Priority
   let displayTime = metarTime.utc.split(' ')[1] || '--:--';
   let displayDate = metarTime.utc.split(' ')[0] || '--.--';
   let subTimeLabel = metarTime.relative;
@@ -312,7 +299,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 text-slate-100 pb-12 font-sans flex flex-col">
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-700/50">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -362,10 +348,8 @@ const App: React.FC = () => {
           <div className="space-y-8">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             
-              {/* Left Column: Weather Data */}
               <div className="lg:col-span-2 space-y-6">
                 
-                {/* Station Info Header */}
                 <div className="bg-slate-800/40 rounded-2xl p-6 border border-slate-700/50">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
@@ -386,7 +370,6 @@ const App: React.FC = () => {
                       </div>
                     </div>
                     
-                    {/* Time Display Component */}
                     <div className="flex items-center space-x-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50 min-w-[160px] justify-center text-right transition-all duration-500">
                        <Clock className={`w-6 h-6 ${isLocalTime ? 'text-emerald-400' : 'text-sky-400'}`} />
                        <div className="flex flex-col items-end leading-none">
@@ -411,7 +394,6 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Main Metrics Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <InfoCard 
                     label="Температура" 
@@ -455,8 +437,7 @@ const App: React.FC = () => {
                   />
                 </div>
 
-                 {/* Clouds Section */}
-                <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-5">
+                 <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-5">
                   <div className="flex items-start space-x-4">
                     <div className="p-3 bg-slate-700/50 rounded-lg">
                       <Cloud className="w-6 h-6 text-slate-300" />
@@ -471,10 +452,8 @@ const App: React.FC = () => {
 
               </div>
 
-              {/* Right Column: AI Analysis Action & Result */}
               <div className="lg:col-span-1 space-y-4">
                 
-                {/* Animated Loading State */}
                 {state.analyzing && (
                   <div className="space-y-4 animate-pulse">
                     <div className="bg-slate-800/50 border border-indigo-500/20 rounded-2xl p-6 h-64 flex flex-col items-center justify-center space-y-4">
@@ -488,17 +467,14 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {/* Result State */}
                 {!state.analyzing && state.aiAnalysis && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
                     
-                    {/* Summary Card */}
                     <div className="bg-slate-800/80 border-l-4 border-indigo-500 rounded-r-xl p-4 shadow-lg">
                       <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider mb-2">Сводка</h4>
                       <p className="text-white text-sm leading-relaxed">{state.aiAnalysis.summary}</p>
                     </div>
 
-                    {/* Rating Card */}
                     <div className="bg-slate-800/80 rounded-xl p-4 flex items-center justify-between border border-slate-700">
                       <span className="text-slate-400 text-sm">Условия:</span>
                       <span className={`px-3 py-1 rounded-full text-sm font-bold border ${
@@ -512,7 +488,6 @@ const App: React.FC = () => {
                       </span>
                     </div>
 
-                    {/* Hazards Card */}
                     {state.aiAnalysis.hazards.length > 0 ? (
                       <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-4">
                         <div className="flex items-center space-x-2 mb-3">
@@ -534,7 +509,6 @@ const App: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Forecast Card */}
                     <div className="bg-slate-800/80 border border-slate-700 rounded-xl p-4">
                       <div className="flex items-center space-x-2 mb-3 text-sky-400">
                         <CalendarDays className="w-4 h-4" />
@@ -551,7 +525,6 @@ const App: React.FC = () => {
                   </div>
                 )}
                 
-                {/* Fallback button if needed */}
                 {!state.analyzing && !state.aiAnalysis && state.metar && (
                    <button 
                      onClick={() => loadData(icao)}
@@ -563,7 +536,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* RAW DATA - METAR ONLY - AT THE BOTTOM */}
             <div className="pt-8 border-t border-slate-800">
               <RawDataDisplay 
                 title="RAW METAR" 

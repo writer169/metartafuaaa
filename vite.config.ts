@@ -9,7 +9,7 @@ export default defineConfig({
   },
   plugins: [react()],
   define: {
-    'process.env.API_KEY': JSON.stringify(process.env.GEMINI_API_KEY),
+    'process.env.API_KEY': JSON.stringify(process.env.API_KEY),
     'process.env.ACCESS_KEY': JSON.stringify(process.env.ACCESS_KEY)
   },
   resolve: {

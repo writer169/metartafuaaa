@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
       plugins: [react()],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+        'process.env.ACCESS_KEY': JSON.stringify(env.ACCESS_KEY)
       },
       resolve: {
         alias: {
@@ -21,3 +21,11 @@ export default defineConfig(({ mode }) => {
       }
     };
 });
+```
+
+## 2. Переменные в Vercel
+
+**Project Settings → Environment Variables:**
+```
+GEMINI_API_KEY = ваш_ключ_гемини
+ACCESS_KEY = ваш_секретный_ключ_для_доступа

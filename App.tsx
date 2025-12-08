@@ -17,7 +17,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   CalendarDays,
-  Loader2
+  Loader2,
+  Lock // Added Lock icon
 } from 'lucide-react';
 
 const INITIAL_ICAO = 'UAAA';
@@ -43,10 +44,15 @@ const App: React.FC = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const clientKey = params.get('key');
+    
+    // Safety check for process.env availability
     const serverKey = process.env.ACCESS_KEY;
 
+    if (!serverKey) {
+      console.warn("Environment variable ACCESS_KEY is not set! The app will remain locked.");
+    }
+
     // Only authorize if keys match. 
-    // If process.env.ACCESS_KEY is not set (e.g. dev without env), access is denied by default for safety.
     if (clientKey && serverKey && clientKey === serverKey) {
       setIsAuthorized(true);
     }
@@ -267,7 +273,22 @@ const App: React.FC = () => {
 
   // RENDER SECURITY BLOCK IF NOT AUTHORIZED
   if (!isAuthorized) {
-    return <div className="min-h-screen bg-slate-950 w-full" />;
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+          <div className="bg-red-500/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Lock className="w-8 h-8 text-red-500" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Доступ ограничен</h2>
+          <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+            Для доступа к приложению необходим ключ авторизации. Пожалуйста, используйте корректную ссылку.
+          </p>
+          <div className="bg-slate-950 rounded-lg p-3 text-xs font-mono text-slate-600 break-all border border-slate-900">
+            ?key=YOUR_ACCESS_KEY
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const visStatus = getVisibilityStatus(state.metar?.visib);

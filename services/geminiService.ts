@@ -1,9 +1,20 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { MetarData, TafData, AIAnalysisResult } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = process.env.API_KEY;
+
+if (!apiKey) {
+    console.warn("API_KEY environment variable is not set! AI features will not work.");
+}
+
+const ai = new GoogleGenAI({ apiKey: apiKey || 'dummy_key_to_prevent_crash' });
 
 export const analyzeWeather = async (metar: MetarData | null, taf: TafData | null): Promise<AIAnalysisResult | null> => {
+  if (!apiKey) {
+    console.error("Cannot analyze weather: API_KEY is missing");
+    return null;
+  }
+  
   if (!metar && !taf) return null;
 
   const metarText = metar ? metar.rawOb : "Данные отсутствуют";

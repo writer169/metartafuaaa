@@ -17,12 +17,14 @@ import {
   AlertTriangle,
   CheckCircle2,
   CalendarDays,
-  Loader2
+  Loader2,
+  Lock
 } from 'lucide-react';
 
 const INITIAL_ICAO = 'UAAA';
 
 const App: React.FC = () => {
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   const [icao, setIcao] = useState(INITIAL_ICAO);
   const [inputVal, setInputVal] = useState(INITIAL_ICAO);
   const [state, setState] = useState<WeatherState>({
@@ -34,6 +36,37 @@ const App: React.FC = () => {
     aiAnalysis: null,
     analyzing: false,
   });
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const clientKey = params.get('key');
+      
+      if (!clientKey) {
+        const savedAuth = sessionStorage.getItem('authorized');
+        if (savedAuth === 'true') {
+          setIsAuthorized(true);
+          return;
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/verify-key?key=${clientKey}`);
+        const data = await response.json();
+        
+        if (data.authorized) {
+          setIsAuthorized(true);
+          sessionStorage.setItem('authorized', 'true');
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+      }
+    };
+
+    checkAuth();
+  }, []);
 
   const loadData = useCallback(async (code: string) => {
     setState(prev => ({ ...prev, loading: true, error: null, aiAnalysis: null, analyzing: false }));
@@ -73,8 +106,10 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadData(INITIAL_ICAO);
-  }, [loadData]);
+    if (isAuthorized) {
+      loadData(INITIAL_ICAO);
+    }
+  }, [isAuthorized, loadData]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,6 +269,25 @@ const App: React.FC = () => {
         date: `${parseInt(day)} ${monthName}`
      };
   };
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+          <div className="bg-red-500/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Lock className="w-8 h-8 text-red-500" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Доступ ограничен</h2>
+          <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+            Для доступа к приложению необходим ключ авторизации. Пожалуйста, используйте корректную ссылку.
+          </p>
+          <div className="bg-slate-950 rounded-lg p-3 text-xs font-mono text-slate-600 break-all border border-slate-900">
+            ?key=YOUR_ACCESS_KEY
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const visStatus = getVisibilityStatus(state.metar?.visib);
   const metarTime = state.metar ? formatObsTime(state.metar.obsTime) : { utc: '--', relative: '' };

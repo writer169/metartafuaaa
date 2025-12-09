@@ -42,19 +42,12 @@ async function getRedisClient() {
 
 // Генерируем кэш ключ на основе данных погоды
 function generateCacheKey(metar: any, taf: any): string {
-  const metarKey = metar ? `${metar.icaoId}-${metar.obsTime}-${metar.rawOb}` : 'no-metar';
-  const tafKey = taf ? `${taf.icaoId}-${taf.issueTime}-${taf.rawTAF}` : 'no-taf';
+  // Используем только ICAO и время наблюдения, игнорируя rawOb/rawTAF
+  // Это позволит кешу обновляться при каждом новом наблюдении
+  const metarKey = metar ? `${metar.icaoId}-${metar.obsTime}` : 'no-metar';
+  const tafKey = taf ? `${taf.icaoId}-${taf.issueTime}` : 'no-taf';
   
-  // Создаем простой хэш для сокращения длины ключа
-  const combined = `${metarKey}|${tafKey}`;
-  let hash = 0;
-  for (let i = 0; i < combined.length; i++) {
-    const char = combined.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  
-  return `weather-analysis:${Math.abs(hash)}`;
+  return `weather-analysis:${metarKey}:${tafKey}`;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -158,11 +151,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const result = JSON.parse(text);
     
-    // Сохраняем в кэш на 30 минут (1800 секунд)
+    // Сохраняем в кэш на 15 минут (900 секунд) - меньше чем обычный интервал обновления METAR
     if (redis) {
       try {
-        await redis.setEx(cacheKey, 1800, JSON.stringify(result));
-        console.log('Cached result for', cacheKey);
+        await redis.setEx(cacheKey, 900, JSON.stringify(result));
+        console.log('Cached result for', cacheKey, 'for 15 minutes');
       } catch (cacheError) {
         console.error('Cache write error:', cacheError);
         // Продолжаем без кэширования

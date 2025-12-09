@@ -1,20 +1,8 @@
 import { MetarData, TafData, StationInfo } from '../types';
 
-const BASE_URL = 'https://aviationweather.gov/api/data';
-// Используем corsproxy.io для обхода ограничений CORS в браузере
-const PROXY_URL = 'https://corsproxy.io/?';
-
 export const fetchMetar = async (icao: string): Promise<MetarData | null> => {
   try {
-    const targetUrl = `${BASE_URL}/metar?ids=${icao}&format=json`;
-    // Кодируем целевой URL, чтобы параметры запроса корректно передались через прокси
-    const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`, {
-      cache: 'no-store',
-      headers: {
-        'Pragma': 'no-cache',
-        'Cache-Control': 'no-cache'
-      }
-    });
+    const response = await fetch(`/api/weather?type=metar&ids=${icao}`);
 
     if (!response.ok) {
       console.warn(`METAR fetch failed: ${response.status}`);
@@ -39,14 +27,7 @@ export const fetchMetar = async (icao: string): Promise<MetarData | null> => {
 
 export const fetchTaf = async (icao: string): Promise<TafData | null> => {
   try {
-    const targetUrl = `${BASE_URL}/taf?ids=${icao}&format=json`;
-    const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`, {
-      cache: 'no-store',
-      headers: {
-        'Pragma': 'no-cache',
-        'Cache-Control': 'no-cache'
-      }
-    });
+    const response = await fetch(`/api/weather?type=taf&ids=${icao}`);
 
     if (!response.ok) {
       console.warn(`TAF fetch failed: ${response.status}`);
@@ -72,14 +53,7 @@ export const fetchTaf = async (icao: string): Promise<TafData | null> => {
 
 export const fetchStationInfo = async (icao: string): Promise<StationInfo | null> => {
   try {
-    const targetUrl = `${BASE_URL}/station?ids=${icao}&format=json`;
-    const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`, {
-      cache: 'no-store',
-      headers: {
-        'Pragma': 'no-cache',
-        'Cache-Control': 'no-cache'
-      }
-    });
+    const response = await fetch(`/api/weather?type=station&ids=${icao}`);
 
     if (!response.ok) return null;
 

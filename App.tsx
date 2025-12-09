@@ -203,18 +203,18 @@ const App: React.FC = () => {
 
     let val = typeof vis === 'string' ? parseFloat(vis) : vis;
 
-    // Обработка статутных миль
+    // Обработка статутных миль (SM) строкой
     if (typeof vis === 'string' && vis.includes('SM')) {
       const numericPart = vis.replace('SM', '').trim();
-      if (numericPart === '10' || parseFloat(numericPart) >= 10) {
-        val = 16000; // 10+ миль = отличная видимость
-      } else {
-        val = parseFloat(numericPart) * 1609; // Конвертация миль в метры
-      }
+      val = parseFloat(numericPart) * 1609.34; // Конвертация
+    }
+    // Эвристика: если число маленькое (< 100), значит это мили (API часто возвращает мили числом)
+    else if (!isNaN(val) && val < 100) {
+      val = val * 1609.34;
     }
 
-    // Обработка 9999 (означает >= 10 км)
-    if (val === 9999 || val >= 10000) return { text: 'Отличная', color: 'text-emerald-400' };
+    // Обработка 9999 (означает >= 10 км) может прийти как 9999 метров
+    if (val >= 9999 || val >= 10000) return { text: 'Отличная', color: 'text-emerald-400' };
     if (val >= 5000) return { text: 'Хорошая', color: 'text-emerald-300' };
     if (val >= 2000) return { text: 'Удовлетворит.', color: 'text-yellow-400' };
     return { text: 'Плохая', color: 'text-red-400' };
@@ -223,13 +223,17 @@ const App: React.FC = () => {
   const getVisibValue = (vis: string | number | undefined) => {
     if (vis === undefined) return '--';
 
-    // Обработка 9999 или строкового '9999'
+    // Обработка 9999 или строкового '9999' - стандартный код для >= 10км
     if (vis === 9999 || vis === '9999') return '≥ 10 км';
 
-    // Обработка статутных миль
+    // Обработка статутных миль явно указанных
     if (typeof vis === 'string' && vis.includes('SM')) {
-      const miles = vis.replace('SM', '').trim();
-      return `${miles} ${parseFloat(miles) === 1 ? 'миля' : 'миль'}`;
+      const miles = parseFloat(vis.replace('SM', '').trim());
+      if (isNaN(miles)) return vis;
+      const meters = miles * 1609.34;
+      if (meters >= 10000) return '≥ 10 км';
+      if (meters >= 1000) return `${(meters / 1000).toFixed(1)} км`;
+      return `${Math.round(meters)} м`;
     }
 
     let numVal: number;
@@ -241,11 +245,38 @@ const App: React.FC = () => {
     }
 
     if (!isNaN(numVal)) {
-      if (numVal >= 10000) return '≥ 10 км';
-      if (numVal === 9999) return '≥ 10 км';
+      // Эвристика: API часто возвращает мили (напр 2.11, 6.21) если значение < 100
+      // Но raw METAR может содержать 0000, 0500 и т.д.
+      // Обычно видимость в метрах это 4 цифры, т.е. минимум 0100? Нет, 0000 (0м) или 0050.
+      // Но API aviationweather.gov в формате JSON обычно преобразует метры в мили.
+      // 2.11 мили = 3400м.
+      // 6.21 мили = 10000м.
+      // 10 мили = 16км.
+      // 9000 (метров) = 9000.
+      // Если значение > 100, считаем что это метры.
+      // Если <= 100, считаем что это мили (маловероятно что видимость 100 метров будет передана как 100, а не 0100 в строке, но в JSON это число 100)
+      // Риск: видимость ровно 50 метров (0050) придет как число 50. Мы подумаем что это 50 миль?
+      // 50 миль = 80км. Отлично.
+      // 50 метров = 0.05км. Плохо.
+      // Но 50 миль в METAR не бывает. Максимум 20 SM. 
+      // Если пришло 50 -> скорее всего это метры?
+      // Если пришло 10 -> это 10 миль или 10 метров? 10 метров это 0000 или 0010? RVR?
+      // Давайте так: если число дробное (есть точка) и < 100 -> это точно мили.
+      // Если целое <= 20 -> мили.
+      // Если целое > 20 -> метры? (Потому что > 20 миль не репортят обычно).
+      // У пользователя 2.11 -> дробное -> мили.
 
-      if (numVal >= 1000) return `${(numVal / 1000).toFixed(1)} км`;
-      return `${numVal} м`;
+      const isFloat = !Number.isInteger(numVal);
+      let meters = numVal;
+
+      if (numVal <= 100 && (isFloat || numVal <= 20)) {
+        meters = numVal * 1609.34;
+      }
+
+      if (meters >= 9999) return '≥ 10 км';
+
+      if (meters >= 1000) return `${(meters / 1000).toFixed(1)} км`;
+      return `${Math.round(meters)} м`;
     }
 
     return vis;

@@ -4,13 +4,13 @@ import { analyzeWeather } from './services/geminiService';
 import { WeatherState } from './types';
 import { InfoCard } from './components/InfoCard';
 import { RawDataDisplay } from './components/RawDataDisplay';
-import { 
-  Wind, 
-  Thermometer, 
-  Eye, 
-  Cloud, 
-  Plane, 
-  Search, 
+import {
+  Wind,
+  Thermometer,
+  Eye,
+  Cloud,
+  Plane,
+  Search,
   AlertCircle,
   Clock,
   Navigation,
@@ -37,11 +37,14 @@ const App: React.FC = () => {
     analyzing: false,
   });
 
+  // Ref to track the last observation time to avoid unnecessary AI re-runs
+  const lastObsTimeRef = React.useRef<string | number | null>(null);
+
   useEffect(() => {
     const checkAuth = async () => {
       const params = new URLSearchParams(window.location.search);
       const clientKey = params.get('key');
-      
+
       if (!clientKey) {
         const savedAuth = sessionStorage.getItem('authorized');
         if (savedAuth === 'true') {
@@ -54,7 +57,7 @@ const App: React.FC = () => {
       try {
         const response = await fetch(`/api/verify-key?key=${clientKey}`);
         const data = await response.json();
-        
+
         if (data.authorized) {
           setIsAuthorized(true);
           sessionStorage.setItem('authorized', 'true');
@@ -68,10 +71,14 @@ const App: React.FC = () => {
     checkAuth();
   }, []);
 
-  const loadData = useCallback(async (code: string) => {
-    setState(prev => ({ ...prev, loading: true, error: null, aiAnalysis: null, analyzing: false }));
-    
+  const loadData = useCallback(async (code: string, isSilentUpdate = false) => {
+    // If silent update, don't set loading state
+    if (!isSilentUpdate) {
+      setState(prev => ({ ...prev, loading: true, error: null, aiAnalysis: null, analyzing: false }));
+    }
+
     try {
+      // Use concurrent fetching
       const [metarData, tafData, stationData] = await Promise.all([
         fetchMetar(code),
         fetchTaf(code),
@@ -79,29 +86,45 @@ const App: React.FC = () => {
       ]);
 
       if (!metarData && !tafData) {
-        setState(prev => ({ ...prev, loading: false, error: 'Аэропорт не найден или нет данных.' }));
+        if (!isSilentUpdate) {
+          setState(prev => ({ ...prev, loading: false, error: 'Аэропорт не найден или нет данных.' }));
+        }
         return;
       }
 
-      setState(prev => ({ 
-        ...prev, 
-        metar: metarData, 
-        taf: tafData,
-        station: stationData,
-        loading: false,
-        analyzing: true
-      }));
+      // Check if data is actually new before updating state and triggering AI
+      const isNewData = !lastObsTimeRef.current || (metarData && metarData.obsTime !== lastObsTimeRef.current);
 
-      try {
-        const analysis = await analyzeWeather(metarData, tafData);
-        setState(prev => ({ ...prev, aiAnalysis: analysis, analyzing: false }));
-      } catch (aiError) {
-        console.error("AI Auto-analyze failed", aiError);
-        setState(prev => ({ ...prev, analyzing: false }));
+      if (isNewData) {
+        lastObsTimeRef.current = metarData?.obsTime || null;
+
+        setState(prev => ({
+          ...prev,
+          metar: metarData,
+          taf: tafData,
+          station: stationData,
+          loading: false,
+          analyzing: true // Start analysis for new data
+        }));
+
+        try {
+          const analysis = await analyzeWeather(metarData, tafData);
+          setState(prev => ({ ...prev, aiAnalysis: analysis, analyzing: false }));
+        } catch (aiError) {
+          console.error("AI Auto-analyze failed", aiError);
+          setState(prev => ({ ...prev, analyzing: false }));
+        }
+      } else {
+        // If data is same, just stop loading state if it was manually triggered
+        if (!isSilentUpdate) {
+          setState(prev => ({ ...prev, loading: false }));
+        }
       }
 
     } catch (err) {
-      setState(prev => ({ ...prev, loading: false, error: 'Ошибка при загрузке данных.' }));
+      if (!isSilentUpdate) {
+        setState(prev => ({ ...prev, loading: false, error: 'Ошибка при загрузке данных.' }));
+      }
     }
   }, []);
 
@@ -111,11 +134,23 @@ const App: React.FC = () => {
     }
   }, [isAuthorized, loadData]);
 
+  // Polling effect: check for updates every 60 seconds
+  useEffect(() => {
+    if (!isAuthorized || !icao) return;
+
+    const interval = setInterval(() => {
+      loadData(icao, true); // true = silent update
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [isAuthorized, icao, loadData]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputVal.length >= 3) {
       const code = inputVal.toUpperCase();
       setIcao(code);
+      lastObsTimeRef.current = null; // Reset last time on new search
       loadData(code);
     }
   };
@@ -152,12 +187,12 @@ const App: React.FC = () => {
 
   const getClouds = () => {
     if (!state.metar?.clouds || state.metar.clouds.length === 0) return 'Небо чистое';
-    
+
     return state.metar.clouds.map(c => {
       const desc = getCloudDescription(c.cover);
       const heightMeters = feetToMeters(c.base);
       const type = c.type ? ` (${c.type})` : '';
-      return heightMeters 
+      return heightMeters
         ? `${desc} на ${heightMeters}м${type}`
         : `${desc}${type}`;
     }).join(', ');
@@ -165,9 +200,9 @@ const App: React.FC = () => {
 
   const getVisibilityStatus = (vis: string | number | undefined): { text: string, color: string } => {
     if (vis === undefined) return { text: '--', color: 'text-slate-400' };
-    
+
     let val = typeof vis === 'string' ? parseFloat(vis) : vis;
-    
+
     // Обработка статутных миль
     if (typeof vis === 'string' && vis.includes('SM')) {
       const numericPart = vis.replace('SM', '').trim();
@@ -177,7 +212,7 @@ const App: React.FC = () => {
         val = parseFloat(numericPart) * 1609; // Конвертация миль в метры
       }
     }
-    
+
     // Обработка 9999 (означает >= 10 км)
     if (val === 9999 || val >= 10000) return { text: 'Отличная', color: 'text-emerald-400' };
     if (val >= 5000) return { text: 'Хорошая', color: 'text-emerald-300' };
@@ -187,75 +222,76 @@ const App: React.FC = () => {
 
   const getVisibValue = (vis: string | number | undefined) => {
     if (vis === undefined) return '--';
-    
+
     // Обработка 9999 или строкового '9999'
     if (vis === 9999 || vis === '9999') return '≥ 10 км';
-    
+
     // Обработка статутных миль
     if (typeof vis === 'string' && vis.includes('SM')) {
       const miles = vis.replace('SM', '').trim();
       return `${miles} ${parseFloat(miles) === 1 ? 'миля' : 'миль'}`;
     }
-    
-    // Числовые значения в метрах
+
+    let numVal: number;
+
     if (typeof vis === 'number') {
-      if (vis >= 10000) return '≥ 10 км';
-      if (vis >= 1000) return `${(vis / 1000).toFixed(1)} км`;
-      return `${vis} м`;
+      numVal = vis;
+    } else {
+      numVal = parseFloat(vis);
     }
-    
-    // Строковые значения в метрах
-    const numVal = parseFloat(vis);
+
     if (!isNaN(numVal)) {
       if (numVal >= 10000) return '≥ 10 км';
+      if (numVal === 9999) return '≥ 10 км';
+
       if (numVal >= 1000) return `${(numVal / 1000).toFixed(1)} км`;
       return `${numVal} м`;
     }
-    
+
     return vis;
   };
 
   const formatObsTime = (isoTime: any) => {
     if (isoTime === undefined || isoTime === null) return { utc: '--', relative: '' };
-    
+
     let date: Date;
     const strVal = String(isoTime).trim();
     if (!strVal) return { utc: '--', relative: '' };
 
     const isNumeric = !isNaN(Number(strVal)) && !strVal.includes(':') && !strVal.includes('-');
-    
+
     if (typeof isoTime === 'number' || isNumeric) {
-       let timestamp = Number(strVal);
-       if (timestamp < 10000000000) {
-          timestamp *= 1000;
-       }
-       date = new Date(timestamp);
+      let timestamp = Number(strVal);
+      if (timestamp < 10000000000) {
+        timestamp *= 1000;
+      }
+      date = new Date(timestamp);
     } else {
-       let safeIsoTime = strVal.replace(' ', 'T');
-       if (!safeIsoTime.endsWith('Z') && !safeIsoTime.includes('+') && !safeIsoTime.includes('-')) {
-          safeIsoTime += 'Z';
-       }
-       date = new Date(safeIsoTime);
+      let safeIsoTime = strVal.replace(' ', 'T');
+      if (!safeIsoTime.endsWith('Z') && !safeIsoTime.includes('+') && !safeIsoTime.includes('-')) {
+        safeIsoTime += 'Z';
+      }
+      date = new Date(safeIsoTime);
     }
-    
+
     if (isNaN(date.getTime())) return { utc: strVal, relative: '' };
 
     const day = date.getUTCDate().toString().padStart(2, '0');
     const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
     const hours = date.getUTCHours().toString().padStart(2, '0');
     const minutes = date.getUTCMinutes().toString().padStart(2, '0');
-    
+
     const utcString = `${day}.${month} ${hours}:${minutes} UTC`;
-    
+
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     let relative = '';
     if (diffMins < 0 && diffMins > -60) {
-        relative = 'Только что';
+      relative = 'Только что';
     } else if (diffMins < 0) {
-        relative = ''; 
+      relative = '';
     } else if (diffMins < 60) {
       relative = `${diffMins} мин назад`;
     } else if (diffMins < 1440) {
@@ -279,24 +315,24 @@ const App: React.FC = () => {
   };
 
   const parseLocalTimeString = (timeStr: string) => {
-     const parts = timeStr.split(' ');
-     if (parts.length !== 2) return { time: timeStr, date: '' };
+    const parts = timeStr.split(' ');
+    if (parts.length !== 2) return { time: timeStr, date: '' };
 
-     const [datePart, timePart] = parts;
-     const [day, month] = datePart.split('.');
-     
-     const months = [
-       'января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 
-       'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
-     ];
-     
-     const monthIndex = parseInt(month) - 1;
-     const monthName = months[monthIndex] || month;
+    const [datePart, timePart] = parts;
+    const [day, month] = datePart.split('.');
 
-     return {
-        time: timePart,
-        date: `${parseInt(day)} ${monthName}`
-     };
+    const months = [
+      'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
+    ];
+
+    const monthIndex = parseInt(month) - 1;
+    const monthName = months[monthIndex] || month;
+
+    return {
+      time: timePart,
+      date: `${parseInt(day)} ${monthName}`
+    };
   };
 
   if (!isAuthorized) {
@@ -320,20 +356,20 @@ const App: React.FC = () => {
 
   const visStatus = getVisibilityStatus(state.metar?.visib);
   const metarTime = state.metar ? formatObsTime(state.metar.obsTime) : { utc: '--', relative: '' };
-  
+
   let displayTime = metarTime.utc.split(' ')[1] || '--:--';
   let displayDate = metarTime.utc.split(' ')[0] || '--.--';
   let subTimeLabel = metarTime.relative;
   let isLocalTime = false;
 
   if (state.aiAnalysis?.local_time && !state.aiAnalysis.local_time.includes('XX')) {
-      const parsed = parseLocalTimeString(state.aiAnalysis.local_time);
-      displayTime = parsed.time;
-      displayDate = parsed.date;
-      subTimeLabel = "Местное время";
-      isLocalTime = true;
+    const parsed = parseLocalTimeString(state.aiAnalysis.local_time);
+    displayTime = parsed.time;
+    displayDate = parsed.date;
+    subTimeLabel = "Местное время";
+    isLocalTime = true;
   }
-  
+
   const displayCityName = state.aiAnalysis?.airport_name_ru || cleanStationName(state.station?.name || '');
 
   // Показываем предупреждение о загрузке, если идет любая загрузка
@@ -360,8 +396,8 @@ const App: React.FC = () => {
               placeholder="Код ICAO (напр. UAAA)"
               className="w-full bg-slate-800 border border-slate-600 rounded-full py-2 pl-4 pr-10 text-sm focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all placeholder:text-slate-500 uppercase font-mono tracking-wide"
             />
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="absolute right-1 top-1 p-1.5 bg-sky-600 hover:bg-sky-500 rounded-full text-white transition-colors"
             >
               <Search className="w-4 h-4" />
@@ -384,7 +420,7 @@ const App: React.FC = () => {
       )}
 
       <main className="max-w-6xl mx-auto px-4 mt-8 flex-grow w-full">
-        
+
         {state.error && (
           <div className="bg-red-500/10 border border-red-500/50 text-red-200 p-4 rounded-xl flex items-center space-x-3 mb-6">
             <AlertCircle className="w-5 h-5" />
@@ -402,9 +438,9 @@ const App: React.FC = () => {
         {!state.loading && state.metar && (
           <div className="space-y-8">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            
+
               <div className="lg:col-span-2 space-y-6">
-                
+
                 <div className="bg-slate-800/40 rounded-2xl p-6 border border-slate-700/50">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
@@ -413,61 +449,61 @@ const App: React.FC = () => {
                           {displayCityName || state.metar.icaoId}
                         </h2>
                         <div className="flex items-center space-x-3 mt-2">
-                           <span className="px-2 py-0.5 rounded bg-slate-700 text-slate-300 font-mono font-bold text-lg">
-                             {state.metar.icaoId}
-                           </span>
-                           {state.station && displayCityName !== cleanStationName(state.station.name) && (
-                             <span className="text-slate-400 font-light truncate hidden sm:inline-block">
-                               {cleanStationName(state.station.name)}
-                             </span>
-                           )}
+                          <span className="px-2 py-0.5 rounded bg-slate-700 text-slate-300 font-mono font-bold text-lg">
+                            {state.metar.icaoId}
+                          </span>
+                          {state.station && displayCityName !== cleanStationName(state.station.name) && (
+                            <span className="text-slate-400 font-light truncate hidden sm:inline-block">
+                              {cleanStationName(state.station.name)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center space-x-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50 min-w-[160px] justify-center text-right transition-all duration-500">
-                       <Clock className={`w-6 h-6 ${isLocalTime ? 'text-emerald-400' : 'text-sky-400'}`} />
-                       <div className="flex flex-col items-end leading-none">
-                          <span className="text-white font-mono font-bold text-3xl tracking-wide">
-                            {displayTime}
+                      <Clock className={`w-6 h-6 ${isLocalTime ? 'text-emerald-400' : 'text-sky-400'}`} />
+                      <div className="flex flex-col items-end leading-none">
+                        <span className="text-white font-mono font-bold text-3xl tracking-wide">
+                          {displayTime}
+                        </span>
+                        <span className="text-sm text-slate-300 font-medium mt-1">
+                          {displayDate}
+                        </span>
+                        <div className="flex flex-col items-end mt-1">
+                          <span className="text-xs text-slate-500">
+                            {subTimeLabel}
                           </span>
-                          <span className="text-sm text-slate-300 font-medium mt-1">
-                             {displayDate}
-                          </span>
-                          <div className="flex flex-col items-end mt-1">
-                              <span className="text-xs text-slate-500">
-                                {subTimeLabel}
-                              </span>
-                              {isLocalTime && (
-                                  <span className="text-[10px] text-slate-600 font-mono">
-                                      {metarTime.utc}
-                                  </span>
-                              )}
-                          </div>
-                       </div>
+                          {isLocalTime && (
+                            <span className="text-[10px] text-slate-600 font-mono">
+                              {metarTime.utc}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <InfoCard 
-                    label="Температура" 
-                    value={state.metar.temp} 
-                    unit="°C" 
-                    icon={<Thermometer className="w-6 h-6 text-white" />} 
+                  <InfoCard
+                    label="Температура"
+                    value={state.metar.temp}
+                    unit="°C"
+                    icon={<Thermometer className="w-6 h-6 text-white" />}
                     colorClass="bg-orange-500/20 text-orange-400"
                     subValue={`Точка росы: ${state.metar.dewp}°C`}
                   />
-                  
-                  <InfoCard 
-                    label="Ветер" 
-                    value={knotsToMs(state.metar.wspd)} 
-                    unit="м/с" 
-                    icon={<Wind className="w-6 h-6 text-white" />} 
+
+                  <InfoCard
+                    label="Ветер"
+                    value={knotsToMs(state.metar.wspd)}
+                    unit="м/с"
+                    icon={<Wind className="w-6 h-6 text-white" />}
                     colorClass="bg-blue-500/20 text-blue-400"
                     subValue={`Направление: ${getWindDir(state.metar.wdir)} ${state.metar.wgst ? `(Порывы ${knotsToMs(state.metar.wgst)} м/с)` : ''}`}
                   />
-                  
+
                   <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-4 flex items-center space-x-4 hover:bg-slate-800/70 transition-colors">
                     <div className={`p-3 rounded-lg bg-slate-700/50 bg-purple-500/20 text-purple-400`}>
                       <Eye className="w-6 h-6 text-white" />
@@ -483,16 +519,16 @@ const App: React.FC = () => {
                     </div>
                   </div>
 
-                  <InfoCard 
-                    label="Давление (QNH)" 
-                    value={state.metar.altim} 
-                    unit="гПа" 
-                    icon={<Navigation className="w-6 h-6 text-white" />} 
+                  <InfoCard
+                    label="Давление (QNH)"
+                    value={state.metar.altim}
+                    unit="гПа"
+                    icon={<Navigation className="w-6 h-6 text-white" />}
                     colorClass="bg-emerald-500/20 text-emerald-400"
                   />
                 </div>
 
-                 <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-5">
+                <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-5">
                   <div className="flex items-start space-x-4">
                     <div className="p-3 bg-slate-700/50 rounded-lg">
                       <Cloud className="w-6 h-6 text-slate-300" />
@@ -508,7 +544,7 @@ const App: React.FC = () => {
               </div>
 
               <div className="lg:col-span-1 space-y-4">
-                
+
                 {state.analyzing && (
                   <div className="space-y-4 animate-pulse">
                     <div className="bg-slate-800/50 border border-indigo-500/20 rounded-2xl p-6 h-64 flex flex-col items-center justify-center space-y-4">
@@ -524,7 +560,7 @@ const App: React.FC = () => {
 
                 {!state.analyzing && state.aiAnalysis && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
-                    
+
                     <div className="bg-slate-800/80 border-l-4 border-indigo-500 rounded-r-xl p-4 shadow-lg">
                       <h4 className="text-xs text-indigo-400 font-bold uppercase tracking-wider mb-2">Сводка</h4>
                       <p className="text-white text-sm leading-relaxed">{state.aiAnalysis.summary}</p>
@@ -532,13 +568,12 @@ const App: React.FC = () => {
 
                     <div className="bg-slate-800/80 rounded-xl p-4 flex items-center justify-between border border-slate-700">
                       <span className="text-slate-400 text-sm">Условия:</span>
-                      <span className={`px-3 py-1 rounded-full text-sm font-bold border ${
-                        state.aiAnalysis.conditions_rating.includes('Хорош') 
-                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
+                      <span className={`px-3 py-1 rounded-full text-sm font-bold border ${state.aiAnalysis.conditions_rating.includes('Хорош')
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                         : state.aiAnalysis.conditions_rating.includes('Нелет') || state.aiAnalysis.conditions_rating.includes('Опас')
-                        ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                        : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                      }`}>
+                          ? 'bg-red-500/20 text-red-400 border-red-500/30'
+                          : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                        }`}>
                         {state.aiAnalysis.conditions_rating}
                       </span>
                     </div>
@@ -559,8 +594,8 @@ const App: React.FC = () => {
                       </div>
                     ) : (
                       <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-xl p-4 flex items-center space-x-3">
-                         <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                         <span className="text-emerald-200 text-sm">Опасных явлений нет</span>
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                        <span className="text-emerald-200 text-sm">Опасных явлений нет</span>
                       </div>
                     )}
 
@@ -573,39 +608,39 @@ const App: React.FC = () => {
                         {state.aiAnalysis.forecast_summary}
                       </p>
                     </div>
-                    
+
                     <div className="text-center text-xs text-slate-600">
                       AI Gemini 2.5 Flash
                     </div>
                   </div>
                 )}
-                
+
                 {!state.analyzing && !state.aiAnalysis && state.metar && (
-                   <button 
-                     onClick={() => loadData(icao)}
-                     className="w-full text-xs text-slate-500 hover:text-slate-300 mt-4"
-                   >
-                     Повторить анализ
-                   </button>
+                  <button
+                    onClick={() => loadData(icao)}
+                    className="w-full text-xs text-slate-500 hover:text-slate-300 mt-4"
+                  >
+                    Повторить анализ
+                  </button>
                 )}
               </div>
             </div>
 
             <div className="pt-8 border-t border-slate-800">
-              <RawDataDisplay 
-                title="RAW METAR" 
-                data={state.metar.rawOb} 
-                timestamp={String(state.metar.obsTime)} 
+              <RawDataDisplay
+                title="RAW METAR"
+                data={state.metar.rawOb}
+                timestamp={String(state.metar.obsTime)}
               />
             </div>
           </div>
         )}
 
         {!state.loading && !state.metar && !state.error && (
-           <div className="text-center py-20 opacity-50">
-             <Plane className="w-16 h-16 mx-auto mb-4 text-slate-600" />
-             <p>Введите код аэропорта (ICAO), чтобы получить сводку.</p>
-           </div>
+          <div className="text-center py-20 opacity-50">
+            <Plane className="w-16 h-16 mx-auto mb-4 text-slate-600" />
+            <p>Введите код аэропорта (ICAO), чтобы получить сводку.</p>
+          </div>
         )}
 
       </main>

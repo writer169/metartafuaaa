@@ -166,24 +166,53 @@ const App: React.FC = () => {
   const getVisibilityStatus = (vis: string | number | undefined): { text: string, color: string } => {
     if (vis === undefined) return { text: '--', color: 'text-slate-400' };
     
-    let val = typeof vis === 'string' ? parseInt(vis) : vis;
-    if (vis === '10SM') val = 16000;
+    let val = typeof vis === 'string' ? parseFloat(vis) : vis;
+    
+    // Обработка статутных миль
     if (typeof vis === 'string' && vis.includes('SM')) {
-       val = parseFloat(vis) * 1609;
+      const numericPart = vis.replace('SM', '').trim();
+      if (numericPart === '10' || parseFloat(numericPart) >= 10) {
+        val = 16000; // 10+ миль = отличная видимость
+      } else {
+        val = parseFloat(numericPart) * 1609; // Конвертация миль в метры
+      }
     }
-
-    if (val >= 9999 || val >= 10000) return { text: 'Отличная', color: 'text-emerald-400' };
+    
+    // Обработка 9999 (означает >= 10 км)
+    if (val === 9999 || val >= 10000) return { text: 'Отличная', color: 'text-emerald-400' };
     if (val >= 5000) return { text: 'Хорошая', color: 'text-emerald-300' };
     if (val >= 2000) return { text: 'Удовлетворит.', color: 'text-yellow-400' };
     return { text: 'Плохая', color: 'text-red-400' };
   };
 
   const getVisibValue = (vis: string | number | undefined) => {
-     if (vis === undefined) return '--';
-     if (vis === 9999 || vis === '9999') return '≥ 10 км';
-     if (typeof vis === 'number') return `${vis} м`;
-     if (typeof vis === 'string' && vis.endsWith('SM')) return `${vis.replace('SM', '')} миль`;
-     return vis;
+    if (vis === undefined) return '--';
+    
+    // Обработка 9999 или строкового '9999'
+    if (vis === 9999 || vis === '9999') return '≥ 10 км';
+    
+    // Обработка статутных миль
+    if (typeof vis === 'string' && vis.includes('SM')) {
+      const miles = vis.replace('SM', '').trim();
+      return `${miles} ${parseFloat(miles) === 1 ? 'миля' : 'миль'}`;
+    }
+    
+    // Числовые значения в метрах
+    if (typeof vis === 'number') {
+      if (vis >= 10000) return '≥ 10 км';
+      if (vis >= 1000) return `${(vis / 1000).toFixed(1)} км`;
+      return `${vis} м`;
+    }
+    
+    // Строковые значения в метрах
+    const numVal = parseFloat(vis);
+    if (!isNaN(numVal)) {
+      if (numVal >= 10000) return '≥ 10 км';
+      if (numVal >= 1000) return `${(numVal / 1000).toFixed(1)} км`;
+      return `${numVal} м`;
+    }
+    
+    return vis;
   };
 
   const formatObsTime = (isoTime: any) => {
@@ -307,6 +336,9 @@ const App: React.FC = () => {
   
   const displayCityName = state.aiAnalysis?.airport_name_ru || cleanStationName(state.station?.name || '');
 
+  // Показываем предупреждение о загрузке, если идет любая загрузка
+  const isAnyLoading = state.loading || state.analyzing;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 text-slate-100 pb-12 font-sans flex flex-col">
       <header className="sticky top-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-700/50">
@@ -337,6 +369,19 @@ const App: React.FC = () => {
           </form>
         </div>
       </header>
+
+      {/* Предупреждение о загрузке */}
+      {isAnyLoading && (
+        <div className="sticky top-16 z-40 bg-gradient-to-r from-sky-500/10 to-indigo-500/10 border-b border-sky-500/30 backdrop-blur-sm animate-in slide-in-from-top duration-300">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-center space-x-3">
+            <Loader2 className="w-5 h-5 text-sky-400 animate-spin" />
+            <span className="text-sm font-medium text-sky-300">
+              {state.loading ? 'Загрузка данных о погоде...' : 'Анализ данных с помощью AI...'}
+            </span>
+            <span className="text-xs text-sky-400/70">Пожалуйста, дождитесь завершения</span>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-6xl mx-auto px-4 mt-8 flex-grow w-full">
         
@@ -420,7 +465,7 @@ const App: React.FC = () => {
                     unit="м/с" 
                     icon={<Wind className="w-6 h-6 text-white" />} 
                     colorClass="bg-blue-500/20 text-blue-400"
-                    subValue={`Направление: ${getWindDir(state.metar.wdir)} ${state.metar.wgst ? `(Порывы ${knotsToMs(state.metar.wgst)})` : ''}`}
+                    subValue={`Направление: ${getWindDir(state.metar.wdir)} ${state.metar.wgst ? `(Порывы ${knotsToMs(state.metar.wgst)} м/с)` : ''}`}
                   />
                   
                   <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-4 flex items-center space-x-4 hover:bg-slate-800/70 transition-colors">

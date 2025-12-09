@@ -13,7 +13,7 @@ export default defineConfig({
   },
   plugins: [react()],
   define: {
-    'process.env.API_KEY': JSON.stringify(process.env.API_KEY),
+    // Убираем API_KEY, оставляем только ACCESS_KEY для клиентской авторизации
     'process.env.ACCESS_KEY': JSON.stringify(process.env.ACCESS_KEY)
   },
   resolve: {

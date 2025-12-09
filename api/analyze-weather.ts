@@ -46,7 +46,7 @@ function generateCacheKey(metar: any, taf: any): string {
   // Это позволит кешу обновляться при каждом новом наблюдении
   const metarKey = metar ? `${metar.icaoId}-${metar.obsTime}` : 'no-metar';
   const tafKey = taf ? `${taf.icaoId}-${taf.issueTime}` : 'no-taf';
-  
+
   return `weather-analysis:${metarKey}:${tafKey}`;
 }
 
@@ -56,7 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
-  
+
   if (!apiKey) {
     console.error("GEMINI_API_KEY environment variable is not set");
     return res.status(500).json({ error: 'Server configuration error' });
@@ -72,7 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Пытаемся получить данные из кэша
     const redis = await getRedisClient();
     const cacheKey = generateCacheKey(metar, taf);
-    
+
     if (redis) {
       try {
         const cached = await redis.get(cacheKey);
@@ -91,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const metarText = metar ? metar.rawOb : "Данные отсутствуют";
     const tafText = taf ? taf.rawTAF : "Данные отсутствуют";
     const airport = metar?.icaoId || taf?.icaoId || "Unknown";
-    
+
     let obsTimeContext = "Unknown";
     if (metar?.obsTime) {
       const val = metar.obsTime;
@@ -123,7 +123,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     `;
 
     const ai = new GoogleGenAI({ apiKey });
-    
+
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
@@ -150,7 +150,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const result = JSON.parse(text);
-    
+
     // Сохраняем в кэш на 15 минут (900 секунд) - меньше чем обычный интервал обновления METAR
     if (redis) {
       try {
@@ -161,12 +161,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Продолжаем без кэширования
       }
     }
-    
+
     return res.status(200).json(result);
 
   } catch (error) {
     console.error("Weather analysis error:", error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Failed to analyze weather',
       details: error instanceof Error ? error.message : 'Unknown error'
     });

@@ -6,7 +6,7 @@ const PROXY_URL = 'https://corsproxy.io/?';
 
 export const fetchMetar = async (icao: string): Promise<MetarData | null> => {
   try {
-    const targetUrl = `${BASE_URL}/metar?ids=${icao}&format=json`;
+    const targetUrl = `${BASE_URL}/metar?ids=${icao}&format=json&_=${Date.now()}`;
     // Кодируем целевой URL, чтобы параметры запроса корректно передались через прокси
     const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`);
     
@@ -33,7 +33,7 @@ export const fetchMetar = async (icao: string): Promise<MetarData | null> => {
 
 export const fetchTaf = async (icao: string): Promise<TafData | null> => {
   try {
-    const targetUrl = `${BASE_URL}/taf?ids=${icao}&format=json`;
+    const targetUrl = `${BASE_URL}/taf?ids=${icao}&format=json&_=${Date.now()}`;
     const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`);
     
     if (!response.ok) {
@@ -60,7 +60,7 @@ export const fetchTaf = async (icao: string): Promise<TafData | null> => {
 
 export const fetchStationInfo = async (icao: string): Promise<StationInfo | null> => {
   try {
-    const targetUrl = `${BASE_URL}/station?ids=${icao}&format=json`;
+    const targetUrl = `${BASE_URL}/station?ids=${icao}&format=json&_=${Date.now()}`;
     const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`);
     
     if (!response.ok) return null;

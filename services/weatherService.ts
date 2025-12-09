@@ -6,18 +6,24 @@ const PROXY_URL = 'https://corsproxy.io/?';
 
 export const fetchMetar = async (icao: string): Promise<MetarData | null> => {
   try {
-    const targetUrl = `${BASE_URL}/metar?ids=${icao}&format=json&_=${Date.now()}`;
+    const targetUrl = `${BASE_URL}/metar?ids=${icao}&format=json`;
     // Кодируем целевой URL, чтобы параметры запроса корректно передались через прокси
-    const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`);
-    
+    const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`, {
+      cache: 'no-store',
+      headers: {
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache'
+      }
+    });
+
     if (!response.ok) {
-        console.warn(`METAR fetch failed: ${response.status}`);
-        throw new Error('Failed to fetch METAR data');
+      console.warn(`METAR fetch failed: ${response.status}`);
+      throw new Error('Failed to fetch METAR data');
     }
 
     const text = await response.text();
     if (!text || text.trim().length === 0) return null;
-    
+
     try {
       const data = JSON.parse(text);
       return data && data.length > 0 ? data[0] : null;
@@ -33,12 +39,18 @@ export const fetchMetar = async (icao: string): Promise<MetarData | null> => {
 
 export const fetchTaf = async (icao: string): Promise<TafData | null> => {
   try {
-    const targetUrl = `${BASE_URL}/taf?ids=${icao}&format=json&_=${Date.now()}`;
-    const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`);
-    
+    const targetUrl = `${BASE_URL}/taf?ids=${icao}&format=json`;
+    const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`, {
+      cache: 'no-store',
+      headers: {
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache'
+      }
+    });
+
     if (!response.ok) {
-        console.warn(`TAF fetch failed: ${response.status}`);
-        throw new Error('Failed to fetch TAF data');
+      console.warn(`TAF fetch failed: ${response.status}`);
+      throw new Error('Failed to fetch TAF data');
     }
 
     const text = await response.text();
@@ -60,19 +72,25 @@ export const fetchTaf = async (icao: string): Promise<TafData | null> => {
 
 export const fetchStationInfo = async (icao: string): Promise<StationInfo | null> => {
   try {
-    const targetUrl = `${BASE_URL}/station?ids=${icao}&format=json&_=${Date.now()}`;
-    const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`);
-    
+    const targetUrl = `${BASE_URL}/station?ids=${icao}&format=json`;
+    const response = await fetch(`${PROXY_URL}${encodeURIComponent(targetUrl)}`, {
+      cache: 'no-store',
+      headers: {
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache'
+      }
+    });
+
     if (!response.ok) return null;
 
     const text = await response.text();
     if (!text || text.trim().length === 0) return null;
 
     try {
-        const data = JSON.parse(text);
-        return data && data.length > 0 ? data[0] : null;
+      const data = JSON.parse(text);
+      return data && data.length > 0 ? data[0] : null;
     } catch (e) {
-        return null;
+      return null;
     }
   } catch (error) {
     console.error("Station fetch error:", error);

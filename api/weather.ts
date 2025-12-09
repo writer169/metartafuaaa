@@ -33,8 +33,17 @@ export default async function handler(request: Request) {
         });
 
         if (!response.ok) {
+            // Если station endpoint упал, не возвращаем 502, чтобы не засорять консоль
+            // Возвращаем пустую ошибку или null, frontend это обработает
+            if (type === 'station') {
+                return new Response("null", {
+                    status: 200, // Возвращаем 200 OK но с null телом, чтобы frontend просто считал что данных нет
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+
             return new Response(JSON.stringify({ error: `Upstream error: ${response.status}` }), {
-                status: 502,
+                status: response.status === 404 ? 404 : 502, // Прокидываем 404 либо 502
                 headers: { 'Content-Type': 'application/json' },
             });
         }

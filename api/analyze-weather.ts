@@ -1,13 +1,63 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI, Type } from "@google/genai";
+import { createClient } from 'redis';
 
 interface AnalyzeRequest {
   metar: any;
   taf: any;
 }
 
+// Создаем Redis клиент
+let redisClient: any = null;
+
+async function getRedisClient() {
+  if (redisClient) return redisClient;
+
+  const redisHost = process.env.REDIS_HOST;
+  const redisPort = process.env.REDIS_PORT;
+  const redisPassword = process.env.REDIS_PASSWORD;
+
+  if (!redisHost || !redisPort) {
+    console.log('Redis not configured, caching disabled');
+    return null;
+  }
+
+  try {
+    redisClient = createClient({
+      socket: {
+        host: redisHost,
+        port: parseInt(redisPort),
+      },
+      password: redisPassword,
+    });
+
+    await redisClient.connect();
+    console.log('Redis connected successfully');
+    return redisClient;
+  } catch (error) {
+    console.error('Redis connection failed:', error);
+    return null;
+  }
+}
+
+// Генерируем кэш ключ на основе данных погоды
+function generateCacheKey(metar: any, taf: any): string {
+  const metarKey = metar ? `${metar.icaoId}-${metar.obsTime}-${metar.rawOb}` : 'no-metar';
+  const tafKey = taf ? `${taf.icaoId}-${taf.issueTime}-${taf.rawTAF}` : 'no-taf';
+  
+  // Создаем простой хэш для сокращения длины ключа
+  const combined = `${metarKey}|${tafKey}`;
+  let hash = 0;
+  for (let i = 0; i < combined.length; i++) {
+    const char = combined.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  
+  return `weather-analysis:${Math.abs(hash)}`;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Allow only POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -26,11 +76,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'No weather data provided' });
     }
 
+    // Пытаемся получить данные из кэша
+    const redis = await getRedisClient();
+    const cacheKey = generateCacheKey(metar, taf);
+    
+    if (redis) {
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+          console.log('Cache hit for', cacheKey);
+          return res.status(200).json(JSON.parse(cached));
+        }
+        console.log('Cache miss for', cacheKey);
+      } catch (cacheError) {
+        console.error('Cache read error:', cacheError);
+        // Продолжаем без кэша
+      }
+    }
+
+    // Если кэша нет, генерируем новый анализ
     const metarText = metar ? metar.rawOb : "Данные отсутствуют";
     const tafText = taf ? taf.rawTAF : "Данные отсутствуют";
     const airport = metar?.icaoId || taf?.icaoId || "Unknown";
     
-    // Prepare observation time context
     let obsTimeContext = "Unknown";
     if (metar?.obsTime) {
       const val = metar.obsTime;
@@ -89,6 +157,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const result = JSON.parse(text);
+    
+    // Сохраняем в кэш на 30 минут (1800 секунд)
+    if (redis) {
+      try {
+        await redis.setEx(cacheKey, 1800, JSON.stringify(result));
+        console.log('Cached result for', cacheKey);
+      } catch (cacheError) {
+        console.error('Cache write error:', cacheError);
+        // Продолжаем без кэширования
+      }
+    }
+    
     return res.status(200).json(result);
 
   } catch (error) {
